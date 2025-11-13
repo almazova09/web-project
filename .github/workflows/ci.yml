@@ -3,6 +3,8 @@ name: CI
 on:
   push:
     branches: [ "main" ]
+    paths:
+      - "web/**"
 
 jobs:
   build:
@@ -22,8 +24,8 @@ jobs:
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
-          context: app-web/web
-          file: app-web/web/Dockerfile
+          context: web
+          file: web/Dockerfile
           push: true
           tags: |
             ${{ secrets.ACR_LOGIN_SERVER }}/web-app:latest
