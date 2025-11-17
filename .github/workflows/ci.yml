@@ -30,7 +30,7 @@ jobs:
       # 3 Install dependencies
       - name: Install dependencies
         working-directory: web
-        run: npm ci
+        run: npm install
 
       # 4 Run unit tests
       - name: Run unit tests
