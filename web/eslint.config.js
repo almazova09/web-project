@@ -1,9 +1,6 @@
-module.exports = [
-  {
-    files: ["**/*.js"],
-    rules: {
-      semi: "error",
-      quotes: ["error", "double"]
-    }
-  }
-];
+module.exports = {
+  env: { node: true, es2021: true },
+  extends: ["eslint:recommended"],
+  parserOptions: { ecmaVersion: "latest", sourceType: "module" },
+  rules: {}
+};
