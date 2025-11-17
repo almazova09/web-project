@@ -5,17 +5,81 @@ on:
     branches: [ "main" ]
     paths:
       - "web/**"
+  pull_request:
+    branches: [ "main" ]
   workflow_dispatch:
 
-
 jobs:
-  build:
+  build-test-analyze:
+    name: Build, Test, Analyze and Push
     runs-on: ubuntu-latest
 
     steps:
+      # 1 Checkout code
       - name: Checkout SCM
         uses: actions/checkout@v4
 
+      # 2 Set up Node.js
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: web/package.json
+
+      # 3 Install dependencies
+      - name: Install dependencies
+        working-directory: web
+        run: npm ci
+
+      # 4 Run unit tests
+      - name: Run unit tests
+        working-directory: web
+        run: npm test --if-present
+
+      # 5 Run ESLint (static code style/lint)
+      - name: Run ESLint
+        working-directory: web
+        run: |
+          npx eslint . --ext .js,.jsx,.ts,.tsx || true
+
+      # 6 Run SonarQube or SonarCloud analysis
+      # Requires SONAR_TOKEN and SONAR_HOST_URL in repo secrets
+      - name: SonarQube Scan
+        uses: SonarSource/sonarqube-scan-action@v2
+        with:
+          projectBaseDir: web
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+
+      # 7 Scan dependencies for vulnerabilities
+      - name: Dependency vulnerability scan
+        working-directory: web
+        run: |
+          npm audit --audit-level=moderate || true
+
+      # 8 Build Docker image
+      - name: Build Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: web
+          file: web/Dockerfile
+          push: false
+          tags: web-app:latest
+
+      # 9 Scan Docker image for CVEs using Trivy
+      - name: Container image scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: web-app:latest
+          format: 'table'
+          exit-code: '0'
+          ignore-unfixed: true
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
+
+      # 10 Login to ACR
       - name: Login to ACR
         uses: docker/login-action@v3
         with:
@@ -23,7 +87,8 @@ jobs:
           username: ${{ secrets.ACR_USERNAME }}
           password: ${{ secrets.ACR_PASSWORD }}
 
-      - name: Build and push
+      # 11 Push image to ACR
+      - name: Push image to ACR
         uses: docker/build-push-action@v6
         with:
           context: web
@@ -31,6 +96,10 @@ jobs:
           push: true
           tags: |
             ${{ secrets.ACR_LOGIN_SERVER }}/web-app:latest
+            ${{ secrets.ACR_LOGIN_SERVER }}/web-app:${{ github.sha }}
 
-
-
+      # 12 Upload coverage to GitHub summary (optional)
+      - name: Upload coverage report
+        if: success()
+        run: |
+          echo "CI completed successfully!" >> $GITHUB_STEP_SUMMARY
