@@ -49,7 +49,7 @@ jobs:
         with:
           projectBaseDir: web
           args: >
-           -Dsonar.scanner.connectTimeout=60000 \
+           -Dsonar.scanner.connectTimeout=60000
            -Dsonar.scanner.readTimeout=60000
         env:
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
