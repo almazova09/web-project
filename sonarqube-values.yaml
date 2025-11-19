@@ -10,8 +10,7 @@ sonarProperties:
 service:
   type: LoadBalancer
   annotations:
-    service.beta.kubernetes.io/azure-load-balancer-health-probe-protocol: "Http"
-    service.beta.kubernetes.io/azure-load-balancer-health-probe-path: "/api/system/status"
+    service.beta.kubernetes.io/azure-load-balancer-internal: "false"
 
 resources:
   requests:
