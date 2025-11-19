@@ -6,3 +6,11 @@ monitoringPasscode: "supersecretpass123"
 sonarProperties:
   sonar.web.host: "0.0.0.0"
   sonar.web.context: "/"
+
+service:
+  type: LoadBalancer
+  port: 9000
+  nodePort: 30090       # 👈 FIX: Force NodePort to be stable & match health probe
+  annotations:
+    service.beta.kubernetes.io/azure-load-balancer-health-probe-port: "9000"
+
