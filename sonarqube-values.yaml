@@ -13,3 +13,10 @@ service:
     service.beta.kubernetes.io/azure-load-balancer-health-probe-protocol: "Http"
     service.beta.kubernetes.io/azure-load-balancer-health-probe-path: "/api/system/status"
 
+resources:
+  requests:
+    cpu: 300m
+    memory: 1Gi
+  limits:
+    cpu: 600m
+    memory: 2Gi
