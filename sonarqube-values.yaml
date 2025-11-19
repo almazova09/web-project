@@ -10,7 +10,7 @@ sonarProperties:
 service:
   type: LoadBalancer
   port: 9000
-  nodePort: 30090       # 👈 FIX: Force NodePort to be stable & match health probe
+  nodePort: 30090  
   annotations:
+    service.beta.kubernetes.io/azure-load-balancer-health-probe-protocol: "Tcp"
     service.beta.kubernetes.io/azure-load-balancer-health-probe-port: "9000"
-
