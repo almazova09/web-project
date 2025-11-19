@@ -42,6 +42,9 @@ jobs:
       #   working-directory: web
       #   run: npx eslint . --config eslint.config.cjs --ext .js || true
 
+      - name: Test SonarQube reachability
+        run: curl -v ${{ secrets.SONAR_HOST_URL }}/api/system/status
+
       # 6 Run SonarQube or SonarCloud analysis
       # Requires SONAR_TOKEN and SONAR_HOST_URL in repo secrets
       - name: SonarQube Scan
@@ -55,9 +58,6 @@ jobs:
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
      
-      - name: Test SonarQube reachability
-        run: curl -v ${{ secrets.SONAR_HOST_URL }}/api/system/status
-
       # 7 Scan dependencies for vulnerabilities
       - name: Dependency vulnerability scan
         working-directory: web
