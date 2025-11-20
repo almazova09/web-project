@@ -4,7 +4,7 @@ pipeline {
         kubernetes {
             label "web-project-kaniko-${BUILD_NUMBER}"
             defaultContainer 'node'
-            yaml: """
+            yaml """
 apiVersion: v1
 kind: Pod
 metadata:
@@ -66,6 +66,7 @@ spec:
 """
         }
     }
+
 
     environment {
         ACR_LOGIN_SERVER = 'myprivateregistry15.azurecr.io'
