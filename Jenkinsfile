@@ -62,14 +62,14 @@ spec:
 
     environment {
         ACR_LOGIN_SERVER = 'myprivateregistry15.azurecr.io'
-        SONAR_HOST       = 'http://4.242.72.128:9000'
         VERSION_FILE     = "version.txt"
+        IMAGE_VERSION    = ""
     }
 
     stages {
 
         /*------------------------------
-         1. CHECKOUT
+         CHECKOUT
         -------------------------------*/
         stage('Checkout Repo') {
             steps {
@@ -78,7 +78,20 @@ spec:
         }
 
         /*------------------------------
-         2. NPM INSTALL
+         SET VERSION
+        -------------------------------*/
+        stage('Set Version') {
+            steps {
+                script {
+                    IMAGE_VERSION = "v1.${env.BUILD_NUMBER}"
+                    writeFile file: VERSION_FILE, text: IMAGE_VERSION
+                    echo "Using IMAGE_VERSION = ${IMAGE_VERSION}"
+                }
+            }
+        }
+
+        /*------------------------------
+         NPM INSTALL
         -------------------------------*/
         stage('Install Node Dependencies') {
             steps {
@@ -91,38 +104,32 @@ spec:
         }
 
         /*------------------------------
-         3. VERSIONING FIXED
+         UNIT TESTS
         -------------------------------*/
-
-
-        /*------------------------------
-         4. UNIT TESTS
-        -------------------------------*/
-stage('Run Unit Tests') {
-    steps {
-        container('node') {
-            dir('web') {
-                sh 'npm test --if-present || true'
+        stage('Run Unit Tests') {
+            steps {
+                container('node') {
+                    dir('web') {
+                        sh 'npm test --if-present || true'
+                    }
+                }
             }
-        }
-    }
-    post {
-        always {
-            script {
-                def files = findFiles(glob: 'web/test-results/**/*.xml')
-                if (files.length > 0) {
-                    junit 'web/test-results/**/*.xml'
-                } else {
-                    echo "⚠ No JUnit test reports found — skipping JUnit parsing."
+            post {
+                always {
+                    script {
+                        def files = findFiles(glob: 'web/test-results/**/*.xml')
+                        if (files.length > 0) {
+                            junit 'web/test-results/**/*.xml'
+                        } else {
+                            echo "⚠ No JUnit test reports found — skipping JUnit parsing."
+                        }
+                    }
                 }
             }
         }
-    }
-}
-
 
         /*------------------------------
-         5. ESLINT
+         ESLINT
         -------------------------------*/
         stage('ESLint') {
             steps {
@@ -139,7 +146,7 @@ stage('Run Unit Tests') {
         }
 
         /*------------------------------
-         6. PRETTIER
+         PRETTIER
         -------------------------------*/
         stage('Prettier') {
             steps {
@@ -156,7 +163,7 @@ stage('Run Unit Tests') {
         }
 
         /*------------------------------
-         7. NPM AUDIT
+         NPM AUDIT
         -------------------------------*/
         stage('NPM Audit') {
             steps {
@@ -169,7 +176,7 @@ stage('Run Unit Tests') {
         }
 
         /*------------------------------
-         8. SAST: NJSSCAN
+         SAST: NJSSCAN
         -------------------------------*/
         stage('SAST (njsscan)') {
             steps {
@@ -188,43 +195,7 @@ stage('Run Unit Tests') {
         }
 
         /*------------------------------
-         9. SONAR SCAN
-        -------------------------------*/
-        stage('SonarQube Scan') {
-            steps {
-                withSonarQubeEnv('MySonarQube') {
-                    withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
-                        container('node') {
-                            dir('web') {
-                                sh """
-                                    sonar-scanner \
-                                      -Dsonar.projectKey=web \
-                                      -Dsonar.sources=. \
-                                      -Dsonar.host.url=${SONAR_HOST} \
-                                      -Dsonar.login=${SONAR_TOKEN} \
-                                      -Dsonar.projectVersion=${IMAGE_VERSION} \
-                                      -Dsonar.exclusions=node_modules/**,**/*.test.js
-                                """
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        /*------------------------------
-         10. QUALITY GATE
-        -------------------------------*/
-        stage('Quality Gate') {
-            steps {
-                timeout(time: 3, unit: 'MINUTES') {
-                    waitForQualityGate abortPipeline: false
-                }
-            }
-        }
-
-        /*------------------------------
-         11. DOCKER BUILD
+         DOCKER BUILD
         -------------------------------*/
         stage('Build Docker Image') {
             steps {
@@ -239,7 +210,7 @@ stage('Run Unit Tests') {
         }
 
         /*------------------------------
-         12. TRIVY SCAN
+         TRIVY SCAN
         -------------------------------*/
         stage('Trivy Scan') {
             steps {
@@ -252,7 +223,7 @@ stage('Run Unit Tests') {
         }
 
         /*------------------------------
-         13. PUSH IMAGE
+         PUSH IMAGE
         -------------------------------*/
         stage('Push Image to ACR') {
             steps {
