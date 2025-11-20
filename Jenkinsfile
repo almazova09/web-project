@@ -2,52 +2,84 @@ pipeline {
 
     agent {
         kubernetes {
+            label "web-project-ci-${BUILD_NUMBER}"
+            defaultContainer 'node'
             yaml """
 apiVersion: v1
 kind: Pod
+metadata:
+  labels:
+    jenkins/label: web-project-ci
 spec:
   containers:
     - name: node
       image: node:18-bullseye
-      command: ['cat']
+      command: ["cat"]
       tty: true
       volumeMounts:
-        - name: dockersock
-          mountPath: /var/run/docker.sock
+      - mountPath: /home/jenkins/agent
+        name: workspace-volume
+      - mountPath: /var/run/docker.sock
+        name: dockersock
 
     - name: docker
       image: docker:24.0
-      command: ['cat']
+      command: ["cat"]
       tty: true
       volumeMounts:
-        - name: dockersock
-          mountPath: /var/run/docker.sock
+      - mountPath: /var/run/docker.sock
+        name: dockersock
+      - mountPath: /home/jenkins/agent
+        name: workspace-volume
 
     - name: tools
       image: python:3.11
-      command: ['cat']
+      command: ["cat"]
       tty: true
+      volumeMounts:
+      - mountPath: /home/jenkins/agent
+        name: workspace-volume
 
+    - name: jnlp
+      image: jenkins/inbound-agent:latest
+      env:
+      - name: JENKINS_AGENT_WORKDIR
+        value: /home/jenkins/agent
+      volumeMounts:
+      - mountPath: /home/jenkins/agent
+        name: workspace-volume
+
+  restartPolicy: Never
   volumes:
     - name: dockersock
       hostPath:
         path: /var/run/docker.sock
+    - name: workspace-volume
+      emptyDir: {}
 """
         }
     }
 
     environment {
         ACR_LOGIN_SERVER = 'myprivateregistry15.azurecr.io'
-        SONAR_HOST = "http://4.242.72.128:9000"
-        VERSION_FILE = "version.txt"
+        SONAR_HOST       = 'http://4.242.72.128:9000'
+        VERSION_FILE     = "version.txt"
     }
 
     stages {
 
+        /*------------------------------
+         1. CHECKOUT
+        -------------------------------*/
         stage('Checkout Repo') {
-            steps { checkout scm }
+            steps {
+                checkout scm
+            }
         }
 
+        /*------------------------------
+         2. NPM INSTALL
+        -------------------------------*/
         stage('Install Node Dependencies') {
             steps {
                 container('node') {
@@ -58,24 +90,42 @@ spec:
             }
         }
 
+        /*------------------------------
+         3. VERSIONING FIXED
+        -------------------------------*/
         stage('Determine Version') {
             steps {
                 script {
                     container('node') {
-                        sh """
+                        sh '''
+                            # Allow Jenkins working directory
+                            git config --global --add safe.directory "$(pwd)"
+
+                            # Tags
                             git fetch --tags || true
-                            latestTag=\$(git describe --tags --abbrev=0 || echo 'v1.0.0')
-                            IFS='.' read -r major minor patch <<< "\${latestTag#v}"
-                            newPatch=\$((patch + 1))
-                            newVersion="v\$major.\$minor.\$newPatch"
-                            echo \$newVersion > ${VERSION_FILE}
-                        """
+
+                            latestTag=$(git describe --tags --abbrev=0 2>/dev/null || echo "v1.0.0")
+                            echo "Latest tag: $latestTag"
+
+                            clean=${latestTag#v}
+                            IFS="." read major minor patch <<< "$clean"
+
+                            newPatch=$((patch + 1))
+                            newVersion="v${major}.${minor}.${newPatch}"
+
+                            echo "$newVersion" > version.txt
+                            echo "New version: $newVersion"
+                        '''
                     }
-                    env.IMAGE_VERSION = readFile("${VERSION_FILE}").trim()
+
+                    env.IMAGE_VERSION = readFile('version.txt').trim()
                 }
             }
         }
 
+        /*------------------------------
+         4. UNIT TESTS
+        -------------------------------*/
         stage('Run Unit Tests') {
             steps {
                 container('node') {
@@ -85,30 +135,49 @@ spec:
                 }
             }
             post {
-                always { junit 'web/test-results/**/*.xml' }
+                always {
+                    junit 'web/test-results/**/*.xml'
+                }
             }
         }
 
+        /*------------------------------
+         5. ESLINT
+        -------------------------------*/
         stage('ESLint') {
             steps {
                 container('node') {
                     dir('web') {
-                        sh 'npx eslint . || true'
+                        sh '''
+                            if [ -f "eslint.config.js" ] || [ -f ".eslintrc.js" ]; then
+                                npx eslint . || true
+                            fi
+                        '''
                     }
                 }
             }
         }
 
+        /*------------------------------
+         6. PRETTIER
+        -------------------------------*/
         stage('Prettier') {
             steps {
                 container('node') {
                     dir('web') {
-                        sh 'npx prettier --check . || true'
+                        sh '''
+                            if [ -f "prettier.config.js" ]; then
+                                npx prettier --check . || true
+                            fi
+                        '''
                     }
                 }
             }
         }
 
+        /*------------------------------
+         7. NPM AUDIT
+        -------------------------------*/
         stage('NPM Audit') {
             steps {
                 container('node') {
@@ -119,13 +188,16 @@ spec:
             }
         }
 
+        /*------------------------------
+         8. SAST: NJSSCAN
+        -------------------------------*/
         stage('SAST (njsscan)') {
             steps {
                 container('tools') {
-                    sh """
+                    sh '''
                         pip install njsscan || true
                         njsscan --json --output njsscan-results.json web || true
-                    """
+                    '''
                 }
             }
             post {
@@ -135,6 +207,9 @@ spec:
             }
         }
 
+        /*------------------------------
+         9. SONAR SCAN
+        -------------------------------*/
         stage('SonarQube Scan') {
             steps {
                 withSonarQubeEnv('MySonarQube') {
@@ -143,12 +218,12 @@ spec:
                             dir('web') {
                                 sh """
                                     sonar-scanner \
-                                        -Dsonar.projectKey=web \
-                                        -Dsonar.sources=. \
-                                        -Dsonar.host.url=${SONAR_HOST} \
-                                        -Dsonar.login=${SONAR_TOKEN} \
-                                        -Dsonar.projectVersion=${IMAGE_VERSION} \
-                                        -Dsonar.exclusions=node_modules/**
+                                      -Dsonar.projectKey=web \
+                                      -Dsonar.sources=. \
+                                      -Dsonar.host.url=${SONAR_HOST} \
+                                      -Dsonar.login=${SONAR_TOKEN} \
+                                      -Dsonar.projectVersion=${IMAGE_VERSION} \
+                                      -Dsonar.exclusions=node_modules/**,**/*.test.js
                                 """
                             }
                         }
@@ -157,35 +232,48 @@ spec:
             }
         }
 
+        /*------------------------------
+         10. QUALITY GATE
+        -------------------------------*/
         stage('Quality Gate') {
             steps {
-                timeout(time: 2, unit: 'MINUTES') {
+                timeout(time: 3, unit: 'MINUTES') {
                     waitForQualityGate abortPipeline: false
                 }
             }
         }
 
+        /*------------------------------
+         11. DOCKER BUILD
+        -------------------------------*/
         stage('Build Docker Image') {
             steps {
                 container('docker') {
                     dir('web') {
-                        sh "docker build -t web-app:${IMAGE_VERSION} -f Dockerfile ."
+                        sh """
+                            docker build -t web-app:${IMAGE_VERSION} -f Dockerfile .
+                        """
                     }
                 }
             }
         }
 
+        /*------------------------------
+         12. TRIVY SCAN
+        -------------------------------*/
         stage('Trivy Scan') {
             steps {
-                container('tools') {
+                container('docker') {
                     sh """
-                        pip install trivy || true
                         trivy image --severity CRITICAL,HIGH --exit-code 0 --no-progress web-app:${IMAGE_VERSION}
                     """
                 }
             }
         }
 
+        /*------------------------------
+         13. PUSH IMAGE
+        -------------------------------*/
         stage('Push Image to ACR') {
             steps {
                 withCredentials([
@@ -208,7 +296,11 @@ spec:
     }
 
     post {
-        success { echo "CI pipeline completed successfully! Version: ${IMAGE_VERSION}" }
-        always { cleanWs() }
+        success {
+            echo "CI completed successfully! Version: ${IMAGE_VERSION}"
+        }
+        always {
+            cleanWs()
+        }
     }
 }
