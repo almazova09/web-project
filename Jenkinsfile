@@ -3,7 +3,7 @@ pipeline {
     agent {
         kubernetes {
             label "web-project-${BUILD_NUMBER}"
-            yaml: """
+            yaml """
 apiVersion: v1
 kind: Pod
 metadata:
@@ -96,7 +96,6 @@ spec:
                             echo "v${major}.${minor}.${newPatch}" > version.txt
                         '''
                     }
-
                     env.IMAGE_VERSION = readFile('version.txt').trim()
                 }
             }
@@ -183,16 +182,13 @@ spec:
                 container('azure-cli') {
                     withCredentials([azureServicePrincipal('AZURE_CREDENTIALS')]) {
                         sh '''
-                            # Login to Azure
                             az login --service-principal \
                               -u $AZURE_CLIENT_ID \
                               -p $AZURE_CLIENT_SECRET \
                               --tenant $AZURE_TENANT_ID
 
-                            # ACR Login
                             az acr login --name ${ACR_NAME}
 
-                            # ACR Remote Build
                             az acr build \
                               --registry ${ACR_NAME} \
                               --image web-app:${IMAGE_VERSION} \
@@ -204,7 +200,6 @@ spec:
                 }
             }
         }
-
     }
 
     post {
@@ -212,7 +207,9 @@ spec:
             echo "🎉 CI completed successfully! Version: ${IMAGE_VERSION}"
         }
         always {
-            cleanWs()
+            node {
+                cleanWs()
+            }
         }
     }
 }
