@@ -219,9 +219,8 @@ spec:
             echo "🎉 CI completed successfully! Version: ${IMAGE_VERSION}"
         }
         always {
-            node {
-                cleanWs()
-            }
+            cleanWs()
         }
     }
 }
+
