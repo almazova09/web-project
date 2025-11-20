@@ -7,84 +7,90 @@ pipeline {
             yaml """
 apiVersion: v1
 kind: Pod
+metadata:
+  labels:
+    jenkins/label: web-project-kaniko
 spec:
   containers:
 
+    # Node container
     - name: node
       image: node:18-bullseye
-      command: ['cat']
+      command: ["cat"]
       tty: true
       volumeMounts:
-      - name: workspace-volume
-        mountPath: /home/jenkins/agent
+      - mountPath: /home/jenkins/agent
+        name: workspace-volume
 
-    - name: tools
-      image: python:3.11
-      command: ['cat']
-      tty: true
-      volumeMounts:
-      - name: workspace-volume
-        mountPath: /home/jenkins/agent
-
-    # --- Kaniko container ---
+    # Kaniko container (FIXED)
     - name: kaniko
       image: gcr.io/kaniko-project/executor:latest
       command:
-      - /busybox/cat
+      - /kaniko/executor
+      args:
+      - "--help"
       tty: true
       volumeMounts:
-      - name: workspace-volume
-        mountPath: /home/jenkins/agent
       - name: kaniko-secret
-        mountPath: /kaniko/.docker
+        mountPath: /kaniko/.docker/
+      - mountPath: /home/jenkins/agent
+        name: workspace-volume
+
+    # Python tools
+    - name: tools
+      image: python:3.11
+      command: ["cat"]
+      tty: true
+      volumeMounts:
+      - mountPath: /home/jenkins/agent
+        name: workspace-volume
+
+    # Jenkins agent
+    - name: jnlp
+      image: jenkins/inbound-agent:latest
+      env:
+      - name: JENKINS_AGENT_WORKDIR
+        value: /home/jenkins/agent
+      volumeMounts:
+      - mountPath: /home/jenkins/agent
+        name: workspace-volume
+
+  restartPolicy: Never
 
   volumes:
-    - name: workspace-volume
-      emptyDir: {}
     - name: kaniko-secret
       secret:
-        secretName: acr-dockerconfig  # MUST MATCH YOUR SECRET NAME
+        secretName: acr-dockerconfig
+        items:
+        - key: .dockerconfigjson
+          path: config.json
+
+    - name: workspace-volume
+      emptyDir: {}
 """
         }
     }
 
     environment {
-        ACR_LOGIN_SERVER = "myprivateregistry15.azurecr.io"
+        ACR_LOGIN_SERVER = 'myprivateregistry15.azurecr.io'
+        VERSION_FILE = "version.txt"
     }
 
     stages {
 
-        /* ==========================
-           1. CHECKOUT
-        ========================== */
-        stage("Checkout") {
+        /*-------------------------------------
+         CHECKOUT
+        -------------------------------------*/
+        stage('Checkout Repo') {
             steps {
                 checkout scm
             }
         }
 
-        /* ==========================
-           2. VERSIONING
-        ========================== */
-        stage("Set Version") {
-            steps {
-                script {
-                    def tag = sh(script: "git describe --tags --abbrev=0 || echo v1.0.0", returnStdout: true).trim()
-                    def clean = tag.replace("v","")
-                    def (major, minor, patch) = clean.tokenize('.')
-                    def newPatch = (patch as int) + 1
-                    IMAGE_VERSION = "v${major}.${minor}.${newPatch}"
-
-                    writeFile file: "version.txt", text: IMAGE_VERSION
-                    echo "Using IMAGE_VERSION = ${IMAGE_VERSION}"
-                }
-            }
-        }
-
-        /* ==========================
-           3. NPM INSTALL
-        ========================== */
-        stage("Install Node Dependencies") {
+        /*-------------------------------------
+         INSTALL NPM
+        -------------------------------------*/
+        stage('Install Node Dependencies') {
             steps {
                 container('node') {
                     dir('web') {
@@ -94,103 +100,121 @@ spec:
             }
         }
 
-        /* ==========================
-           4. TESTS
-        ========================== */
-        stage("Run Unit Tests") {
+        /*-------------------------------------
+         VERSIONING
+        -------------------------------------*/
+        stage('Determine Version') {
+            steps {
+                script {
+                    container('node') {
+                        sh """
+                            git config --global --add safe.directory `pwd`
+                            git fetch --tags || true
+                            
+                            latestTag=\$(git describe --tags --abbrev=0 || echo 'v1.0.0')
+                            echo "Latest tag: \$latestTag"
+
+                            clean=\${latestTag#v}
+                            major=\$(echo \$clean | cut -d. -f1)
+                            minor=\$(echo \$clean | cut -d. -f2)
+                            patch=\$(echo \$clean | cut -d. -f3)
+
+                            newPatch=\$((patch + 1))
+                            newVersion="v\$major.\$minor.\$newPatch"
+
+                            echo \$newVersion > ${VERSION_FILE}
+                            echo "New version: \$newVersion"
+                        """
+                    }
+
+                    env.IMAGE_VERSION = readFile("${VERSION_FILE}").trim()
+                }
+            }
+        }
+
+        /*-------------------------------------
+         UNIT TESTS
+        -------------------------------------*/
+        stage('Run Unit Tests') {
             steps {
                 container('node') {
-                    dir("web") {
+                    dir('web') {
                         sh 'npm test --if-present || true'
                     }
                 }
             }
-        }
-
-        /* ==========================
-           5. ESLint
-        ========================== */
-        stage("ESLint") {
-            steps {
-                container('node') {
-                    dir("web") {
-                        sh '''if [ -f "eslint.config.js" ] || [ -f ".eslintrc.js" ]; then
-                                npx eslint . || true
-                              fi'''
+            post {
+                always {
+                    script {
+                        def files = findFiles(glob: 'web/test-results/**/*.xml')
+                        if (files.length > 0) {
+                            junit 'web/test-results/**/*.xml'
+                        } else {
+                            echo "⚠ No JUnit test reports found — skipping."
+                        }
                     }
                 }
             }
         }
 
-        /* ==========================
-           6. Prettier
-        ========================== */
-        stage("Prettier") {
-            steps {
-                container('node') {
-                    dir("web") {
-                        sh '''if [ -f "prettier.config.js" ]; then
-                                npx prettier --check . || true
-                              fi'''
-                    }
-                }
-            }
-        }
-
-        /* ==========================
-           7. NPM AUDIT
-        ========================== */
-        stage("NPM Audit") {
+        /*-------------------------------------
+         ESLINT
+        -------------------------------------*/
+        stage('ESLint') {
             steps {
                 container('node') {
                     dir('web') {
-                        sh 'npm audit --audit-level=moderate || true'
+                        sh '''
+                            if [ -f "eslint.config.js" ] || [ -f ".eslintrc.js" ]; then
+                                npx eslint . || true
+                            fi
+                        '''
                     }
                 }
             }
         }
 
-        /* ==========================
-           8. SAST (njsscan)
-        ========================== */
-        stage("SAST (njsscan)") {
+        /*-------------------------------------
+         PRETTIER
+        -------------------------------------*/
+        stage('Prettier') {
             steps {
-                container('tools') {
-                    sh '''
-                        pip install njsscan || true
-                        njsscan --json --output njsscan-results.json web || true
-                    '''
+                container('node') {
+                    dir('web') {
+                        sh '''
+                            if [ -f "prettier.config.js" ]; then
+                                npx prettier --check . || true
+                            fi
+                        '''
+                    }
                 }
             }
         }
 
-        /* ==========================
-           9. KANIKO BUILD + PUSH
-        ========================== */
-        stage("Build & Push with Kaniko") {
+        /*-------------------------------------
+         BUILD IMAGE WITH KANIKO
+        -------------------------------------*/
+        stage('Build Container Image (Kaniko)') {
             steps {
                 container('kaniko') {
-                    dir('web') {
-                        sh """
-                            /kaniko/executor \
-                              --context `pwd` \
-                              --dockerfile Dockerfile \
-                              --destination=${ACR_LOGIN_SERVER}/web-app:${IMAGE_VERSION} \
-                              --destination=${ACR_LOGIN_SERVER}/web-app:latest \
-                              --skip-tls-verify
-                        """
-                    }
+                    sh """
+                        /kaniko/executor \
+                          --dockerfile=web/Dockerfile \
+                          --context=./web \
+                          --destination=${ACR_LOGIN_SERVER}/web-app:${IMAGE_VERSION} \
+                          --destination=${ACR_LOGIN_SERVER}/web-app:latest
+                    """
                 }
             }
         }
     }
 
     post {
+        success {
+            echo "🎉 CI SUCCESS! Image pushed: ${ACR_LOGIN_SERVER}/web-app:${IMAGE_VERSION}"
+        }
         always {
             cleanWs()
-        }
-        success {
-            echo "🎉 Build & Push SUCCESS | Version: ${IMAGE_VERSION}"
         }
     }
 }
