@@ -215,12 +215,12 @@ spec:
 
     }
 
-    post {
+        post {
         success {
             echo "🎉 CI completed successfully! Version: ${IMAGE_VERSION}"
         }
         always {
-            node { cleanWs() }   // FIX: Run inside node so workspace exists
+            cleanWs()     
         }
     }
 }
