@@ -1,4 +1,9 @@
-yaml """
+agent {
+    kubernetes {
+        label "web-project-kaniko-${BUILD_NUMBER}"
+        defaultContainer 'node'
+
+        yaml: """
 apiVersion: v1
 kind: Pod
 metadata:
@@ -57,9 +62,9 @@ spec:
 
     - name: workspace-volume
       emptyDir: {}
-
 """
-
+    }
+}
     environment {
         ACR_LOGIN_SERVER = 'myprivateregistry15.azurecr.io'
         VERSION_FILE     = 'version.txt'
