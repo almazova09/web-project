@@ -176,7 +176,7 @@ spec:
                 }
             }
         }
-        
+
 stage('Build & Push (ACR Task Build)') {
     steps {
         container('azure-cli') {
@@ -199,12 +199,12 @@ stage('Build & Push (ACR Task Build)') {
                       --file web/Dockerfile \
                       web
                 '''
-            }
         }
     }
-}
-
-
+}  
+}  
+    }
+    
 post {
     success {
         echo "🎉 CI completed successfully! Version: ${IMAGE_VERSION}"
@@ -214,6 +214,8 @@ post {
     }
 }
 }
+
+    
 
 
 
