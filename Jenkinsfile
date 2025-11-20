@@ -93,35 +93,46 @@ spec:
         /*------------------------------
          3. VERSIONING FIXED
         -------------------------------*/
-        stage('Determine Version') {
-            steps {
-                script {
-                    container('node') {
-                        sh '''
-                            # Allow Jenkins working directory
-                            git config --global --add safe.directory "$(pwd)"
+stage('Determine Version') {
+    steps {
+        script {
+            container('node') {
+                sh '''
+                    # Allow Jenkins working directory
+                    git config --global --add safe.directory "$(pwd)"
 
-                            # Tags
-                            git fetch --tags || true
+                    # Fetch tags
+                    git fetch --tags || true
 
-                            latestTag=$(git describe --tags --abbrev=0 2>/dev/null || echo "v1.0.0")
-                            echo "Latest tag: $latestTag"
+                    # Determine latest tag (fallback v1.0.0)
+                    latestTag=$(git describe --tags --abbrev=0 2>/dev/null || echo "v1.0.0")
+                    echo "Latest tag: $latestTag"
 
-                            clean=${latestTag#v}
-                            IFS="." read major minor patch <<< "$clean"
+                    # Strip "v" prefix
+                    cleanTag=${latestTag#v}
 
-                            newPatch=$((patch + 1))
-                            newVersion="v${major}.${minor}.${newPatch}"
+                    # Split version manually (NO <<< and NO arrays)
+                    major=$(echo "$cleanTag" | cut -d. -f1)
+                    minor=$(echo "$cleanTag" | cut -d. -f2)
+                    patch=$(echo "$cleanTag" | cut -d. -f3)
 
-                            echo "$newVersion" > version.txt
-                            echo "New version: $newVersion"
-                        '''
-                    }
+                    # Increment patch
+                    newPatch=$((patch + 1))
 
-                    env.IMAGE_VERSION = readFile('version.txt').trim()
-                }
+                    # Build new version
+                    newVersion="v${major}.${minor}.${newPatch}"
+
+                    echo "$newVersion" > version.txt
+                    echo "New version: $newVersion"
+                '''
             }
+
+            // Load version into Jenkins ENV
+            env.IMAGE_VERSION = readFile('version.txt').trim()
         }
+    }
+}
+
 
         /*------------------------------
          4. UNIT TESTS
