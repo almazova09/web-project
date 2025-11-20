@@ -1,9 +1,10 @@
-agent {
-    kubernetes {
-        label "web-project-kaniko-${BUILD_NUMBER}"
-        defaultContainer 'node'
+pipeline {
 
-        yaml: """
+    agent {
+        kubernetes {
+            label "web-project-kaniko-${BUILD_NUMBER}"
+            defaultContainer 'node'
+            yaml: """
 apiVersion: v1
 kind: Pod
 metadata:
@@ -63,8 +64,9 @@ spec:
     - name: workspace-volume
       emptyDir: {}
 """
+        }
     }
-}
+
     environment {
         ACR_LOGIN_SERVER = 'myprivateregistry15.azurecr.io'
         VERSION_FILE     = 'version.txt'
@@ -72,14 +74,12 @@ spec:
 
     stages {
 
-        /*--------------------------------------*/
         stage('Checkout Repo') {
             steps {
                 checkout scm
             }
         }
 
-        /*--------------------------------------*/
         stage('Install Dependencies') {
             steps {
                 container('node') {
@@ -90,7 +90,6 @@ spec:
             }
         }
 
-        /*--------------------------------------*/
         stage('Versioning') {
             steps {
                 script {
@@ -106,9 +105,7 @@ spec:
                             patch=$(echo $clean | cut -d. -f3)
 
                             newPatch=$((patch + 1))
-                            newVersion="v${major}.${minor}.${newPatch}"
-
-                            echo $newVersion > version.txt
+                            echo "v${major}.${minor}.${newPatch}" > version.txt
                         '''
                     }
                     env.IMAGE_VERSION = readFile('version.txt').trim()
@@ -116,7 +113,6 @@ spec:
             }
         }
 
-        /*--------------------------------------*/
         stage('Run Unit Tests') {
             steps {
                 container('node') {
@@ -139,7 +135,6 @@ spec:
             }
         }
 
-        /*--------------------------------------*/
         stage('ESLint') {
             steps {
                 container('node') {
@@ -149,12 +144,11 @@ spec:
                                 npx eslint . || true
                             fi
                         '''
-                }
+                    }
                 }
             }
         }
 
-        /*--------------------------------------*/
         stage('Prettier') {
             steps {
                 container('node') {
@@ -169,7 +163,6 @@ spec:
             }
         }
 
-        /*--------------------------------------*/
         stage('NPM Audit') {
             steps {
                 container('node') {
@@ -180,7 +173,6 @@ spec:
             }
         }
 
-        /*--------------------------------------*/
         stage('SAST (njsscan)') {
             steps {
                 container('tools') {
@@ -197,7 +189,6 @@ spec:
             }
         }
 
-        /*--------------------------------------*/
         stage('Build & Push with Kaniko') {
             steps {
                 container('kaniko') {
@@ -215,11 +206,12 @@ spec:
 
     }
 
-        post {
+    post {
         success {
             echo "🎉 CI completed successfully! Version: ${IMAGE_VERSION}"
         }
         always {
-            cleanWs()     
+            cleanWs()
         }
     }
+}
