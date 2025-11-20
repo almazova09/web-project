@@ -176,31 +176,34 @@ spec:
                 }
             }
         }
+        
+stage('Build & Push (ACR Task Build)') {
+    steps {
+        container('azure-cli') {
+            withCredentials([azureServicePrincipal('AZURE_CREDENTIALS')]) {
 
-        stage('Build & Push (ACR Task Build)') {
-            steps {
-                container('azure-cli') {
-                    withCredentials([azureServicePrincipal('AZURE_CREDENTIALS')]) {
-                        sh '''
-                            az login --service-principal \
-                              -u $AZURE_CLIENT_ID \
-                              -p $AZURE_CLIENT_SECRET \
-                              --tenant $AZURE_TENANT_ID
+                sh '''
+                    # Login to Azure
+                    az login --service-principal \
+                      -u $AZURE_CLIENT_ID \
+                      -p $AZURE_CLIENT_SECRET \
+                      --tenant $AZURE_TENANT_ID
 
-                            az acr login --name ${ACR_NAME}
+                    # No docker login needed here!
 
-                            az acr build \
-                              --registry ${ACR_NAME} \
-                              --image web-app:${IMAGE_VERSION} \
-                              --image web-app:latest \
-                              --file web/Dockerfile \
-                              web
-                        '''
-                    }
-                }
+                    # ACR Remote Build
+                    az acr build \
+                      --registry ${ACR_NAME} \
+                      --image web-app:${IMAGE_VERSION} \
+                      --image web-app:latest \
+                      --file web/Dockerfile \
+                      web
+                '''
             }
         }
     }
+}
+
 
 post {
     success {
