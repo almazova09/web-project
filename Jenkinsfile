@@ -202,14 +202,12 @@ spec:
         }
     }
 
-    post {
-        success {
-            echo "🎉 CI completed successfully! Version: ${IMAGE_VERSION}"
-        }
-        always {
-            node {
-                cleanWs()
-            }
-        }
+post {
+    success {
+        echo "🎉 CI completed successfully! Version: ${IMAGE_VERSION}"
+    }
+    always {
+        cleanWs()
     }
 }
+
