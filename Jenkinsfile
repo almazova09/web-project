@@ -11,6 +11,19 @@ metadata:
   labels:
     jenkins/label: web-project-kaniko
 spec:
+  restartPolicy: Never
+
+  volumes:
+    - name: kaniko-secret
+      secret:
+        secretName: acr-dockerconfig
+        items:
+          - key: .dockerconfigjson
+            path: config.json
+
+    - name: workspace-volume
+      emptyDir: {}
+
   containers:
 
     - name: node
@@ -32,7 +45,7 @@ spec:
           mountPath: /home/jenkins/agent
 
     - name: kaniko
-      image: gcr.io/kaniko-project/executor:latest
+      image: gcr.io/kaniko-project/executor:debug
       command: ["/busybox/sh"]
       args: ["-c", "sleep infinity"]
       tty: true
@@ -50,23 +63,9 @@ spec:
       volumeMounts:
         - name: workspace-volume
           mountPath: /home/jenkins/agent
-
-  restartPolicy: Never
-
-  volumes:
-    - name: kaniko-secret
-      secret:
-        secretName: acr-dockerconfig
-        items:
-          - key: .dockerconfigjson
-            path: config.json
-
-    - name: workspace-volume
-      emptyDir: {}
 """
         }
     }
-
 
     environment {
         ACR_LOGIN_SERVER = 'myprivateregistry15.azurecr.io'
@@ -75,12 +74,14 @@ spec:
 
     stages {
 
+        /*--------------------------------------*/
         stage('Checkout Repo') {
             steps {
                 checkout scm
             }
         }
 
+        /*--------------------------------------*/
         stage('Install Dependencies') {
             steps {
                 container('node') {
@@ -91,6 +92,7 @@ spec:
             }
         }
 
+        /*--------------------------------------*/
         stage('Versioning') {
             steps {
                 script {
@@ -105,8 +107,7 @@ spec:
                             minor=$(echo $clean | cut -d. -f2)
                             patch=$(echo $clean | cut -d. -f3)
 
-                            newPatch=$((patch + 1))
-                            echo "v${major}.${minor}.${newPatch}" > version.txt
+                            echo "v${major}.${minor}.$((patch + 1))" > version.txt
                         '''
                     }
                     env.IMAGE_VERSION = readFile('version.txt').trim()
@@ -114,6 +115,7 @@ spec:
             }
         }
 
+        /*--------------------------------------*/
         stage('Run Unit Tests') {
             steps {
                 container('node') {
@@ -125,17 +127,18 @@ spec:
             post {
                 always {
                     script {
-                        def xml = findFiles(glob: 'web/test-results/**/*.xml')
-                        if (xml.length > 0) {
+                        def results = findFiles(glob: 'web/test-results/**/*.xml')
+                        if (results) {
                             junit 'web/test-results/**/*.xml'
                         } else {
-                            echo "⚠ No JUnit reports found — skipping."
+                            echo "⚠ No JUnit test results found."
                         }
                     }
                 }
             }
         }
 
+        /*--------------------------------------*/
         stage('ESLint') {
             steps {
                 container('node') {
@@ -150,6 +153,7 @@ spec:
             }
         }
 
+        /*--------------------------------------*/
         stage('Prettier') {
             steps {
                 container('node') {
@@ -164,6 +168,7 @@ spec:
             }
         }
 
+        /*--------------------------------------*/
         stage('NPM Audit') {
             steps {
                 container('node') {
@@ -174,6 +179,7 @@ spec:
             }
         }
 
+        /*--------------------------------------*/
         stage('SAST (njsscan)') {
             steps {
                 container('tools') {
@@ -190,6 +196,7 @@ spec:
             }
         }
 
+        /*--------------------------------------*/
         stage('Build & Push with Kaniko') {
             steps {
                 container('kaniko') {
@@ -212,7 +219,9 @@ spec:
             echo "🎉 CI completed successfully! Version: ${IMAGE_VERSION}"
         }
         always {
-            cleanWs()
+            node {
+                cleanWs()
+            }
         }
     }
 }
