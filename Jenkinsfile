@@ -1,10 +1,4 @@
-pipeline {
-
-    agent {
-        kubernetes {
-            label "web-project-kaniko-${BUILD_NUMBER}"
-            defaultContainer 'node'
-            yaml """
+yaml """
 apiVersion: v1
 kind: Pod
 metadata:
@@ -15,29 +9,32 @@ spec:
 
     - name: node
       image: node:18-bullseye
-      command: ["cat"]
+      command: ["/bin/sh"]
+      args: ["-c", "sleep infinity"]
       tty: true
       volumeMounts:
-      - name: workspace-volume
-        mountPath: /home/jenkins/agent
+        - name: workspace-volume
+          mountPath: /home/jenkins/agent
 
     - name: tools
       image: python:3.11
-      command: ["cat"]
+      command: ["/bin/sh"]
+      args: ["-c", "sleep infinity"]
       tty: true
       volumeMounts:
-      - name: workspace-volume
-        mountPath: /home/jenkins/agent
+        - name: workspace-volume
+          mountPath: /home/jenkins/agent
 
     - name: kaniko
       image: gcr.io/kaniko-project/executor:latest
-      command: ["cat"]            # IMPORTANT: keeps container alive!
+      command: ["/busybox/sh"]
+      args: ["-c", "sleep infinity"]
       tty: true
       volumeMounts:
-      - name: kaniko-secret
-        mountPath: /kaniko/.docker/
-      - name: workspace-volume
-        mountPath: /home/jenkins/agent
+        - name: kaniko-secret
+          mountPath: /kaniko/.docker/
+        - name: workspace-volume
+          mountPath: /home/jenkins/agent
 
     - name: jnlp
       image: jenkins/inbound-agent:latest
@@ -45,8 +42,8 @@ spec:
         - name: JENKINS_AGENT_WORKDIR
           value: /home/jenkins/agent
       volumeMounts:
-      - mountPath: /home/jenkins/agent
-        name: workspace-volume
+        - name: workspace-volume
+          mountPath: /home/jenkins/agent
 
   restartPolicy: Never
 
@@ -62,8 +59,6 @@ spec:
       emptyDir: {}
 
 """
-        }
-    }
 
     environment {
         ACR_LOGIN_SERVER = 'myprivateregistry15.azurecr.io'
@@ -223,4 +218,3 @@ spec:
             cleanWs()     
         }
     }
-}
