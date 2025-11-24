@@ -104,8 +104,8 @@ jobs:
           file: web/Dockerfile
           push: true
           tags: |
-            ${{ secrets.ACR_LOGIN_SERVER }}/web-app:latest
-            ${{ secrets.ACR_LOGIN_SERVER }}/web-app:${{ github.sha }}
+            ${{ secrets.ACR_LOGIN_SERVER }}/web:latest
+            ${{ secrets.ACR_LOGIN_SERVER }}/web:${{ github.sha }}
 
       # 13 Upload coverage/report to summary
       - name: Upload summary
