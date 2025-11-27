@@ -37,32 +37,32 @@ jobs:
         working-directory: web
         run: npm test --if-present
 
-      # # 5 Check SonarQube reachability
-      # - name: Test SonarQube reachability
-      #   run: curl -v ${{ secrets.SONAR_HOST_URL }}/api/system/status
+      # 5 Check SonarQube reachability
+      - name: Test SonarQube reachability
+        run: curl -v ${{ secrets.SONAR_HOST_URL }}/api/system/status
 
-      # # 6 Install SonarScanner CLI (compatible with SonarQube 25.x)
-      # - name: Install SonarScanner CLI
-      #   run: |
-      #     wget https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-5.0.1.3006-linux.zip -O scanner.zip
-      #     unzip -q scanner.zip -d scanner
-      #     echo "SONAR_SCANNER_HOME=$PWD/scanner/sonar-scanner-5.0.1.3006-linux" >> $GITHUB_ENV
-      #     echo "$PWD/scanner/sonar-scanner-5.0.1.3006-linux/bin" >> $GITHUB_PATH
+      # 6 Install SonarScanner CLI (compatible with SonarQube 25.x)
+      - name: Install SonarScanner CLI
+        run: |
+          wget https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-5.0.1.3006-linux.zip -O scanner.zip
+          unzip -q scanner.zip -d scanner
+          echo "SONAR_SCANNER_HOME=$PWD/scanner/sonar-scanner-5.0.1.3006-linux" >> $GITHUB_ENV
+          echo "$PWD/scanner/sonar-scanner-5.0.1.3006-linux/bin" >> $GITHUB_PATH
 
-      # # 7 Run SonarQube scan
-      # - name: SonarQube Scan
-      #   working-directory: web
-      #   run: |
-      #     sonar-scanner \
-      #       -Dsonar.projectKey=web \
-      #       -Dsonar.projectName=web \
-      #       -Dsonar.sources=. \
-      #       -Dsonar.host.url=${{ secrets.SONAR_HOST_URL }} \
-      #       -Dsonar.login=${{ secrets.SONAR_TOKEN }} \
-      #       -Dsonar.scanner.connectTimeout=60000 \
-      #       -Dsonar.scanner.readTimeout=60000
+      # 7 Run SonarQube scan
+      - name: SonarQube Scan
+        working-directory: web
+        run: |
+          sonar-scanner \
+            -Dsonar.projectKey=web \
+            -Dsonar.projectName=web \
+            -Dsonar.sources=. \
+            -Dsonar.host.url=${{ secrets.SONAR_HOST_URL }} \
+            -Dsonar.login=${{ secrets.SONAR_TOKEN }} \
+            -Dsonar.scanner.connectTimeout=60000 \
+            -Dsonar.scanner.readTimeout=60000
 
-      # 8 Scan dependencies for vulnerabilities
+      8 Scan dependencies for vulnerabilities
       - name: Dependency vulnerability scan
         working-directory: web
         run: |
